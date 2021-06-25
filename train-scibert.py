@@ -1,3 +1,8 @@
+"""
+
+File ini berisi kode untuk men-train model SPECTER menggunakan lightning pytorch
+
+"""
 # basic python packages
 import json
 import pickle
@@ -45,8 +50,6 @@ from allennlp.data.tokenizers.token import Token
 training_size = 684100
 # validation_size = 145375
 
-# log_every_n_steps how frequently pytorch lightning logs.
-# By default, Lightning logs every 50 rows, or 50 training steps.
 log_every_n_steps = 1
 
 arg_to_scheduler = {
@@ -63,7 +66,7 @@ arg_to_scheduler_metavar = "{" + ", ".join(arg_to_scheduler_choices) + "}"
 
 class DataReaderFromPickled(DatasetReader):
     """
-    This is copied from https://github.com/allenai/specter/blob/673346f9f76bcf422b38e0d1b448ef4414bcd4df/specter/data.py#L61:L109 without any change
+    Kelas untuk DataReader untuk Lightning Pytorch
     """
     def __init__(self,
                  lazy: bool = False,
@@ -74,11 +77,7 @@ class DataReaderFromPickled(DatasetReader):
                  concat_title_abstract: bool = None
                  ) -> None:
         """
-        Dataset reader that uses pickled preprocessed instances
-        Consumes the output resulting from data_utils/create_training_files.py
-
-        the additional arguments are not used here and are for compatibility with
-        the other data reader at prediction time
+        Inisiasi dataset reader 
         """
         self.max_sequence_length = max_sequence_length
         self.token_indexers = token_indexers
@@ -87,20 +86,14 @@ class DataReaderFromPickled(DatasetReader):
 
     def _read(self, file_path: str):
         """
-        Args:
-            file_path: path to the pickled instances
+        Input:
+        file_path: path dari pickled instances
         """
         with open(file_path, 'rb') as f_in:
             unpickler = pickle.Unpickler(f_in)
             while True:
                 try:
                     instance = unpickler.load()
-                    # compatibility with old models:
-                    # for field in instance.fields:
-                    #     if hasattr(instance.fields[field], '_token_indexers') and 'bert' in instance.fields[field]._token_indexers:
-                    #         if not hasattr(instance.fields['source_title']._token_indexers['bert'], '_truncate_long_sequences'):
-                    #             instance.fields[field]._token_indexers['bert']._truncate_long_sequences = True
-                    #             instance.fields[field]._token_indexers['bert']._token_min_padding_length = 0
                     if self.max_sequence_length:
                         for paper_type in ['source', 'pos', 'neg']:
                             if self._concat_title_abstract:
@@ -121,10 +114,6 @@ class DataReaderFromPickled(DatasetReader):
                                     instance.fields[f'{paper_type}_title'] = abst_field
                                 else:
                                     yield None
-                                # title_tokens = get_text_tokens(query_title_tokens, query_abstract_tokens, abstract_delimiter)
-                                # pos_title_tokens = get_text_tokens(pos_title_tokens, pos_abstract_tokens, abstract_delimiter)
-                                # neg_title_tokens = get_text_tokens(neg_title_tokens, neg_abstract_tokens, abstract_delimiter)
-                                # query_abstract_tokens = pos_abstract_tokens = neg_abstract_tokens = []
                             for field_type in ['title', 'abstract', 'authors', 'author_positions']:
                                 field = paper_type + '_' + field_type
                                 if instance.fields.get(field):
@@ -138,6 +127,9 @@ class DataReaderFromPickled(DatasetReader):
 
 
 class IterableDataSetMultiWorker(IterableDataset):
+    """
+    Kelas untuk DataReader multiworker 
+    """
     def __init__(self, file_path, tokenizer, size, block_size=100):
         self.datareaderfp = DataReaderFromPickled(max_sequence_length=512)
         self.data_instances = self.datareaderfp._read(file_path)
@@ -154,7 +146,6 @@ class IterableDataSetMultiWorker(IterableDataset):
                 yield data_input
 
         else:
-            # when num_worker is greater than 1. we implement multiple process data loading.
             iter_end = self.size
             worker_id = worker_info.id
             num_workers = worker_info.num_workers
@@ -253,7 +244,7 @@ class IterableDataSetMultiWorkerTestStep(IterableDataset):
 
 class TripletLoss(nn.Module):
     """
-    Triplet loss: copied from  https://github.com/allenai/specter/blob/673346f9f76bcf422b38e0d1b448ef4414bcd4df/specter/model.py#L159 without any change
+    Triplet loss:
     """
     def __init__(self, margin=1.0, distance='l2-norm', reduction='mean'):
         """
@@ -316,8 +307,8 @@ class Specter(pl.LightningModule):
         logger.info(f'loading model from checkpoint: {checkpoint_path}')
 
         self.hparams = init_args
-        self.model = AutoModel.from_pretrained("albert-base-v1")
-        self.tokenizer = AutoTokenizer.from_pretrained("albert-base-v1")
+        self.model = AutoModel.from_pretrained("allenai/scibert_scivocab_cased")
+        self.tokenizer = AutoTokenizer.from_pretrained("allenai/scibert_scivocab_cased")
         self.tokenizer.model_max_length = self.model.config.max_position_embeddings
         self.hparams.seqlen = self.model.config.max_position_embeddings
         self.triple_loss = TripletLoss()
@@ -635,13 +626,9 @@ def main():
     if args.test_only:
         print('loading model...')
 
-        #python test-albert.py --save_dir save-scidocs --gpus 1 --test_only $true --test_checkpoint save-albert-complete/version_0/checkpoints/ep-epoch=1_avg_val_loss-avg_val_loss=0.460.ckpt
 
         model = Specter.load_from_checkpoint(args.test_checkpoint)
-        # model = Specter(args)
 
-        #trainer = pl.Trainer(gpus=args.gpus, limit_val_batches=args.limit_val_batches)
-        #trainer.test(model)
         ref_path="corpus/paper_metadata_view_cite_read.json"
         refs=get_documents_reff(ref_path)
 
@@ -650,19 +637,7 @@ def main():
 
 
 
-        calculate_embeddings(model.tokenizer,model,"corpus/albert-embeddings.jsonl",refs,paper_inputs,paper_ids)
-        # paper=paper_inputs[0]
-        # print(paper)
-        # print(paper_ids[0])
-        # paper_combined=paper['title']+model.tokenizer.sep_token+(paper.get('abstract') or '')
-        # tokenized_inputs=model.tokenizer(paper_combined, return_tensors='pt',padding='max_length',truncation=True,max_length=512)
-        
-        # output = model(**tokenized_inputs)
-        # print(output[0,0,0])
-        # output_list=output[0].cpu().detach().numpy().tolist()
-        # with open('coba.json','w') as outfile:
-        #     for out in output_list:
-        #         outfile.write(str(out))
+        calculate_embeddings(model.tokenizer,model,"corpus/scibert-embeddings.jsonl",refs,paper_inputs,paper_ids)
         print(len(refs))
         print(len(paper_inputs))
 

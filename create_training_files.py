@@ -1,4 +1,14 @@
-"run this script to create training pickled training files"
+
+"""
+
+File ini berisi kode untuk memproses traiing triples termasuk tokenisasi menggunakan ALLENNLP:
+Panggil menggunakan:
+python create_training_files.py --data-dir data --metadata data/metadata.json --outdir data/preprocessed/
+
+
+"""
+
+
 import logging
 import os
 
@@ -25,40 +35,17 @@ import multiprocessing
 from specter.data_utils import triplet_sampling_parallel
 
 
-def init_logger(*, fn=None):
 
-    # !!! here
-    from importlib import reload # python 2.x don't need to import reload, use it directly
-    reload(logging)
-
-    logging_params = {
-        'level': logging.INFO,
-        'format': '%(asctime)s,%(msecs)d %(levelname)-3s [%(filename)s:%(lineno)d] %(message)s'
-    }
-
-    if fn is not None:
-        logging_params['filename'] = fn
-
-    logging.basicConfig(**logging_params)
-    logging.info('reloading logger')
-
-
+#global variable parameter untuk model BERT
 bert_params = {
     "do_lowercase": "true",
     "pretrained_model": "data/scivocab_scivocab_uncased/vocab.txt",
     "use_starting_offsets": "true"
 }
 
-NO_VENUE = '--no_venue--'
 
 
-# ---------------
-# instead of a class with its own constructor we define global variables
-# and set their values using a `set_values` function
-# this is not a clean design and has been done to support multiprocessing
-# for more context, see: https://stackoverflow.com/questions/3288595/multiprocessing-how-to-use-pool-map-on-a-function-defined-in-a-class/21345308#21345308
-
-# global variables
+# global variables untuk model BERT dan training data
 _tokenizer = None
 _token_indexers = None
 _token_indexer_author_id = None
@@ -71,30 +58,7 @@ _data_source = None
 _included_text_fields = None
 
 MAX_NUM_AUTHORS = 5
-# ----------------
 
-def _get_author_field(authors: List[str]):
-    """
-    Converts a list of author ids to their corresponding label and positions
-    Args:
-        authors: list of authors
-
-    Returns:
-        authors and their positions
-    """
-    global _token_indexer_author_id
-    global _token_indexer_author_position
-    global _tokenizer
-    authors = ' '.join(authors)
-    authors = _tokenizer.tokenize(authors)
-    if len(authors) > MAX_NUM_AUTHORS:
-        authors = authors[:MAX_NUM_AUTHORS - 1] + [authors[-1]]
-    author_field = TextField(authors, token_indexers=_token_indexer_author_id)
-
-    author_positions = ' '.join([f'{i:02}' for i in range(len(authors))])
-    author_positions_tokens = _tokenizer.tokenize(author_positions)
-    position_field = TextField(author_positions_tokens, token_indexers=_token_indexer_author_position)
-    return author_field, position_field
 
 
 def set_values(max_sequence_length: Optional[int] = -1,
@@ -102,10 +66,16 @@ def set_values(max_sequence_length: Optional[int] = -1,
                data_source: Optional[str] = None,
                included_text_fields: Optional[str] = None
                ) -> None:
-    # set global values
-    # note: a class with __init__ would have been a better design
-    # we have this structure for efficiency reasons: to support multiprocessing
-    # as multiprocessing with class methods is slower
+    """ 
+    Fungsi untuk menetapkan global values
+    input: 
+        max_sequence_length: panjang sequence
+        concat_title_abstract: apakah melakukan akonkatenasi judul dan abstrak
+        data_source : sumber data
+        included_text_filed: text field apa yang diproses
+    output: none
+    """
+    
     global _tokenizer
     global _token_indexers
     global _token_indexer_author_id
@@ -117,7 +87,7 @@ def set_values(max_sequence_length: Optional[int] = -1,
     global _data_source
     global _included_text_fields
 
-    if _tokenizer is None:  # if not initialized, initialize the tokenizers and token indexers
+    if _tokenizer is None:  
         _tokenizer = WordTokenizer(word_splitter=BertBasicWordSplitter(do_lower_case=bert_params["do_lowercase"]))
         _token_indexers = {"bert": PretrainedBertIndexer.from_params(Params(bert_params))}
         _token_indexer_author_id = {"tokens": SingleIdTokenIndexer(namespace='author')}
@@ -131,7 +101,10 @@ def set_values(max_sequence_length: Optional[int] = -1,
 
 
 def get_text_tokens(title_tokens, abstract_tokens, abstract_delimiter):
-    """ concats title and abstract using a delimiter"""
+    """ Fungsi untuk konkatenasi judul dan abstrak menggunakan delimiter
+    input: token judul, token abstract, delimiter dari abstract
+    output: token gabungan
+    """
     if title_tokens[-1] != Token('.'):
             title_tokens += [Token('.')]
 
@@ -139,6 +112,13 @@ def get_text_tokens(title_tokens, abstract_tokens, abstract_delimiter):
     return title_tokens
 
 def get_instance(paper):
+    """Fungsi untuk memproses tokenisasi masing2 instance dari paper
+    input:
+        paper: data paper
+    output:
+        instance: instance dari paper yang telah tertokenisasi
+    """
+    
     global _tokenizer
     global _token_indexers
     global _token_indexer_author_id
@@ -242,6 +222,7 @@ def get_instance(paper):
     return Instance(fields)
 
 class TrainingInstanceGenerator:
+    #Kelas utama untuk generator training
 
     def __init__(self,
                  data,
@@ -268,9 +249,16 @@ class TrainingInstanceGenerator:
 
     def _get_paper_features(self, paper: Optional[dict] = None) -> \
         Tuple[List[Token], List[Token], List[Token], int, List[Token]]:
+        """
+        Fungsi untuk memproses features dari masing2 paper
+        input: 
+            paper: dictionary dari paper
+        output:
+            features: features dari masing2 paper
+        """
         if paper:
             paper_id = paper.get('paper_id')
-            if paper_id in self.paper_feature_cache:  # This function is being called by the same paper multiple times.
+            if paper_id in self.paper_feature_cache:  
                 return self.paper_feature_cache[paper_id]
 
             venue = paper.get('venue') or NO_VENUE
@@ -287,18 +275,14 @@ class TrainingInstanceGenerator:
 
     def get_raw_instances(self, query_ids, subset_name=None, n_jobs=10):
         """
-        Given query ids, it generates triplets and returns corresponding instances
-        These are raw instances (i.e., untensorized objects )
-        The output of this function is later used with DatasetConstructor.get_instance to convert raw fields to tensors
-
-        Args:
-            query_ids: list of query ids from which triplets are generated
-            subset_name: Optional name to specify the subset (train, test, or val)
-
-        Returns:
-            list of instances (dictionaries)
-            each instance is a dictionary containing fields corresponding to the `query`, `positive` and
-                `negative` papers in the triplet: e.g., query_abstract, query_title, pos_title, neg_title, etc
+        Fungsi untuk memproses instance dari paper
+        
+        input:
+            query_ids: list dari query ids dari triplets training
+            subset_name: nama opsional untuk subset 
+            
+        outputs:
+            dictionary list dari instances (dictionaries)
         """
         logger.info('Generating triplets ...')
         count_success, count_fail = 0, 0
@@ -365,19 +349,9 @@ def get_instances(data, query_ids_file, metadata, data_source=None, n_jobs=1, n_
                   ratio_hard_negatives=0.3, margin_fraction=0.5, samples_per_query=5,
                   concat_title_abstract=False, included_text_fields='title abstract'):
     """
-    Gets allennlp instances from the data file
-    Args:
-        data: the data file (e.g., coviews, or cocites)
-        query_ids_file: train.csv file (one query paper id per line)
-        metadata: a json file containing mapping between paper ids and paper dictionaries
-        data_source: the source of the data (e.g., is it coviews, cite1hop, copdf?)
-        n_jobs: number of jobs to process allennlp instance conversion
-        n_jobs_raw: number of jobs to generate raw triplets
-        ratio_hard_negatives: how many hard nagatives
-        margin_fraction: margin fraction param of triplet generation
-        samples_per_query: how many smaples for each query paper
-
-    Returns:
+    Fungsi untuk memproses instance allennlp
+    
+    output:
         List[Instance]
     """
 
@@ -418,27 +392,24 @@ def main(data_files, train_ids, val_ids, test_ids, metadata_file, outdir, n_jobs
          margin_fraction=0.5, ratio_hard_negatives=0.3, samples_per_query=5, comment='', bert_vocab='',
          concat_title_abstract=False, included_text_fields='title abstract'):
     """
-    Generates instances from a list of datafiles and stores them as a stream of objects
-    Args:
-        data_files: list of files indicating cooccurrence counts
-        train_ids: list of training paper ids corresponding to each data file
-        val_ids: list of validation paper ids
-        test_ids: list of test paper ids
-        metadata_file: path to the metadata file (should cover all data files)
-        outdir: path to an output directory
-        n_jobs: number of parallel jobs for converting instances
-            (in practice we did not find parallelization to help with this)
-        njobs_raw: number of parallel jobs for generating triplets
-            (in practice we found njobs_raw between 10 to 15 to perform fastests)
-        margin_fraction: parameter for triplet generation
-        ratio_hard_negatives: how many of triplets are hard negatives
-        samples_per_query: how many samples per query paper
-        comment: custom comment to add to the file name when saved
+    Fungsi untuk memproses isntances dari list datafiles kemudian disimpan kedalam file
+    inputs:
+        data_files: list file
+        train_ids: list training paper ids 
+        val_ids: list validation paper ids
+        test_ids: list  test paper ids
+        metadata_file: path file metadata 
+        outdir: path  output directory
+        n_jobs: jumlah  parallel jobs untuk konversi instances
+        njobs_raw: jumlah  parallel jobs untuk generasi triplets
+        margin_fraction: parameter untuk triplet generation
+        ratio_hard_negatives: jumlah dari hard negatives
+        samples_per_query: jumlah samples per query paper
+        comment: custom comment 
 
 
     Returns:
-        Nothing
-            Creates files corresponding to each data file
+        Nothing (menyimpan langsung ke file sesuai dengan masing2 data file)
     """
     global bert_params
     bert_params['pretrained_model'] = bert_vocab
@@ -489,20 +460,19 @@ def main(data_files, train_ids, val_ids, test_ids, metadata_file, outdir, n_jobs
 if __name__ == '__main__':
 
     ap = argparse.ArgumentParser()
-    ap.add_argument('--data-dir', help='path to a directory containing `data.json`, `train.csv`, `dev.csv` and `test.csv` files')
-    ap.add_argument('--metadata', help='path to the metadata file')
-    ap.add_argument('--outdir', help='output directory to files')
-    ap.add_argument('--njobs', help='number of parallel jobs for instance conversion', default=1, type=int)
-    ap.add_argument('--njobs_raw', help='number of parallel jobs for triplet generation', default=12, type=int)
+    ap.add_argument('--data-dir', help='path merujuk pada directory yang mengandung `data.json`, `train.csv`, `dev.csv` and `test.csv` files')
+    ap.add_argument('--metadata', help='path file metadata ')
+    ap.add_argument('--outdir', help='output directory ')
+    ap.add_argument('--njobs', help='jumlah parallel jobs untuk konversi instance ', default=1, type=int)
+    ap.add_argument('--njobs_raw', help='jumlah  parallel jobs untuk generasi triplet ', default=12, type=int)
     ap.add_argument('--ratio_hard_negatives', default=0.3, type=float)
     ap.add_argument('--samples_per_query', default=5, type=int)
     ap.add_argument('--margin_fraction', default=0.5, type=float)
     ap.add_argument('--comment', default='', type=str)
-    ap.add_argument('--data_files', help='space delimted list of data files to override default', default=None)
-    ap.add_argument('--bert_vocab', help='path to bert vocab', default='data/scibert_scivocab_uncased/vocab.txt')
+    ap.add_argument('--data_files', help='space delimted list dari data files', default=None)
+    ap.add_argument('--bert_vocab', help='path dari bert vocab', default='data/scibert_scivocab_uncased/vocab.txt')
     ap.add_argument('--concat-title-abstract', action='store_true', default=False)
-    ap.add_argument('--included-text-fields', default='title abstract', help='space delimieted list of fields to include in the main text field'
-                                                                             'possible values: `title`, `abstract`, `authors`')
+    ap.add_argument('--included-text-fields', default='title abstract', help=' delimieted list dari fields `')
     args = ap.parse_args()
 
     data_file = os.path.join(args.data_dir, 'data.json')
