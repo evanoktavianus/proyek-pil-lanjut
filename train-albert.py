@@ -307,8 +307,8 @@ class Specter(pl.LightningModule):
         logger.info(f'loading model from checkpoint: {checkpoint_path}')
 
         self.hparams = init_args
-        self.model = AutoModel.from_pretrained("allenai/scibert_scivocab_cased")
-        self.tokenizer = AutoTokenizer.from_pretrained("allenai/scibert_scivocab_cased")
+        self.model = AutoModel.from_pretrained("albert-base-v1")
+        self.tokenizer = AutoTokenizer.from_pretrained("albert-base-v1")
         self.tokenizer.model_max_length = self.model.config.max_position_embeddings
         self.hparams.seqlen = self.model.config.max_position_embeddings
         self.triple_loss = TripletLoss()
@@ -637,7 +637,7 @@ def main():
 
 
 
-        calculate_embeddings(model.tokenizer,model,"corpus/scibert-embeddings.jsonl",refs,paper_inputs,paper_ids)
+        calculate_embeddings(model.tokenizer,model,"corpus/albert-embeddings.jsonl",refs,paper_inputs,paper_ids)
         print(len(refs))
         print(len(paper_inputs))
 

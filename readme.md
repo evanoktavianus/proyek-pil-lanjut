@@ -26,9 +26,9 @@ Kode untuk memproses sample training, validasi, dan test set dari SCIDOCS
 5. create_training_py
 Kode untuk membuat training triplets dan tokenisasi untuk masing2 query paper dengan positive dan negative paper
 2. train-scibert.py
-Kode untuk training model SPECTER dengan menggunakan dasar SCIBERT
+Kode untuk training model SPECTER dengan menggunakan dasar ALBERT
 1. test-sidocs.py
-Kode untuk testing model SPECTER menggunakan benchmark dataset SCIDOCS
+Kode untuk testing model SPECTER termasuk baseline menggunakan benchmark dataset SCIDOCS
 
 
 ## **Langkah untuk mereproduksi:**
