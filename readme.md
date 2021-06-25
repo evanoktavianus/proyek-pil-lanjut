@@ -1,8 +1,8 @@
-## **Kode Proyek Akhir**
+# **Kode Proyek Akhir**
 
 Repository ini adalah kode untuk tugas akhir proyek mandiri a.n. Evan Oktavianus, DIK Fasilkom UI, NPM 2006624324.
 
-**Requirements:**
+## **Requirements:**
 
 python 3.7
 
@@ -20,7 +20,7 @@ sklearn
 
 allennlp 0.9 with gradient accumulation and fp16
 
-**File utama yang tersedia meliputi:**
+## **File utama yang tersedia meliputi:**
 1. prepare_training_data.py
 Kode untuk memproses sample training, validasi, dan test set dari SCIDOCS
 5. create_training_py
@@ -31,10 +31,10 @@ Kode untuk training model SPECTER dengan menggunakan dasar SCIBERT
 Kode untuk testing model SPECTER menggunakan benchmark dataset SCIDOCS
 
 
-**Langkah untuk mereproduksi:
+## **Langkah untuk mereproduksi:**
 1. persiapkan training data menggunakan prepare_training_data.py
    
-2. proses trianing data menggunakan create_training_files.py dalam environment allennlp:
+2. proses training data menggunakan create_training_files.py dalam environment allennlp:
    
     python create_training_files.py --data-dir data --metadata data/metadata.json --outdir data/preprocessed/
 
